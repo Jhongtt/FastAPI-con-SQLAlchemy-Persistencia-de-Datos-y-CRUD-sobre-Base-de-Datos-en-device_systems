@@ -1,20 +1,17 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+from app.dependencies.database_dependency import get_db
 from app.schemas.response_schema import StandardResponse
-from app.schemas.user_schema import UserCreate, UserUpdate, UserUpdateFull
+from app.schemas.user_schema import UserCreate, UserResponse, UserUpdate, UserUpdateFull
 from app.services.user_service import (
-    list_users,
+    create_user,
+    get_users,
     get_user,
-    create_new_user,
-    update_existing_user,
-    delete_existing_user,
+    update_user,
+    delete_user,
 )
-from app.dependencies.user_dependencies import (
-    get_user_or_404,
-    validate_email_not_duplicate,
-    validate_role_allowed,
-    get_api_config,
-)
+from app.dependencies.user_dependencies import validate_role_allowed
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -23,7 +20,7 @@ router = APIRouter(prefix="/users", tags=["Users"])
     "",
     response_model=StandardResponse,
     summary="List all users",
-    description="Retrieves a paginated list of users with optional filtering by role and active status.",
+    description="Retrieves a paginated list of users with optional filtering by role, active status, and sorting.",
     response_description="List of users retrieved successfully",
 )
 def list_users_route(
@@ -31,11 +28,21 @@ def list_users_route(
     limit: int = Query(10, ge=1, le=100, description="Max records to return"),
     role: Optional[str] = Query(None, description="Filter by role (admin, support, user)"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
-    config: dict = Depends(get_api_config),
+    sort_by: Optional[str] = Query(None, description="Sort by field (name, created_at)"),
+    sort_order: str = Query("asc", description="Sort order (asc, desc)"),
+    db: Session = Depends(get_db),
 ):
-    results = list_users(skip=skip, limit=limit, role=role, is_active=is_active)
+    results = get_users(
+        db=db,
+        skip=skip,
+        limit=limit,
+        role=role,
+        is_active=is_active,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
     return {
-        "data": results,
+        "data": [UserResponse.model_validate(u).model_dump() for u in results],
         "message": "Users retrieved successfully",
         "status_code": status.HTTP_200_OK,
     }
@@ -49,17 +56,19 @@ def list_users_route(
     response_description="User retrieved successfully",
 )
 def get_user_route(
-    user: dict = Depends(get_user_or_404),
+    user_id: int,
+    db: Session = Depends(get_db),
 ):
+    user = get_user(db=db, user_id=user_id)
     return {
-        "data": user,
+        "data": UserResponse.model_validate(user).model_dump(),
         "message": "User retrieved successfully",
         "status_code": status.HTTP_200_OK,
     }
 
 
 @router.post(
-    "/",
+    "",
     response_model=StandardResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new user",
@@ -68,13 +77,12 @@ def get_user_route(
 )
 def create_user_route(
     user_data: UserCreate,
-    config: dict = Depends(get_api_config),
+    db: Session = Depends(get_db),
 ):
-    validate_email_not_duplicate(user_data.email)
     validate_role_allowed(user_data.role)
-    new_user = create_new_user(user_data.model_dump())
+    new_user = create_user(db=db, user_data=user_data.model_dump())
     return {
-        "data": new_user,
+        "data": UserResponse.model_validate(new_user).model_dump(),
         "message": "User created successfully",
         "status_code": status.HTTP_201_CREATED,
     }
@@ -90,13 +98,12 @@ def create_user_route(
 def update_user_full_route(
     user_id: int,
     user_data: UserUpdateFull,
-    _: dict = Depends(get_user_or_404),
+    db: Session = Depends(get_db),
 ):
-    validate_email_not_duplicate(user_data.email, exclude_user_id=user_id)
     validate_role_allowed(user_data.role)
-    updated = update_existing_user(user_id, user_data.model_dump())
+    updated = update_user(db=db, user_id=user_id, update_data=user_data.model_dump())
     return {
-        "data": updated,
+        "data": UserResponse.model_validate(updated).model_dump(),
         "message": "User updated successfully",
         "status_code": status.HTTP_200_OK,
     }
@@ -112,7 +119,7 @@ def update_user_full_route(
 def update_user_partial_route(
     user_id: int,
     user_data: UserUpdate,
-    _: dict = Depends(get_user_or_404),
+    db: Session = Depends(get_db),
 ):
     update_fields = user_data.model_dump(exclude_unset=True)
     if not update_fields:
@@ -120,13 +127,11 @@ def update_user_partial_route(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No fields provided for update",
         )
-    if "email" in update_fields:
-        validate_email_not_duplicate(update_fields["email"], exclude_user_id=user_id)
     if "role" in update_fields:
         validate_role_allowed(update_fields["role"])
-    updated = update_existing_user(user_id, update_fields)
+    updated = update_user(db=db, user_id=user_id, update_data=update_fields)
     return {
-        "data": updated,
+        "data": UserResponse.model_validate(updated).model_dump(),
         "message": "User updated partially",
         "status_code": status.HTTP_200_OK,
     }
@@ -141,7 +146,7 @@ def update_user_partial_route(
 )
 def delete_user_route(
     user_id: int,
-    _: dict = Depends(get_user_or_404),
+    db: Session = Depends(get_db),
 ):
-    delete_existing_user(user_id)
+    delete_user(db=db, user_id=user_id)
     return None

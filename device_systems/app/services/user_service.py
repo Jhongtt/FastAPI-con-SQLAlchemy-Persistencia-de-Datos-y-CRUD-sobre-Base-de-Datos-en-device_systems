@@ -1,81 +1,51 @@
-from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import asc, desc
 from app.models.user_model import User
 
 
-def create_user(db: Session, user_data: dict) -> User:
-    existing = db.query(User).filter(User.email == user_data["email"]).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Email '{user_data['email']}' already exists",
-        )
-    user_data.pop("password", None)
-    db_user = User(**user_data)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
-
-
-def get_users(
-    db: Session,
-    skip: int = 0,
-    limit: int = 10,
-    role: str | None = None,
-    is_active: bool | None = None,
-    sort_by: str | None = None,
-    sort_order: str = "asc",
-) -> list[User]:
+def get_all_users(db: Session, role: str = None, is_active: bool = None) -> list[User]:
     query = db.query(User)
-    if role:
+    if role is not None:
         query = query.filter(User.role == role)
     if is_active is not None:
         query = query.filter(User.is_active == is_active)
-    if sort_by in ("name", "created_at"):
-        order_func = asc if sort_order == "asc" else desc
-        query = query.order_by(order_func(getattr(User, sort_by)))
-    return query.offset(skip).limit(limit).all()
+    return query.all()
 
 
-def get_user(db: Session, user_id: int) -> User:
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id {user_id} not found",
-        )
+def get_user_by_id(db: Session, user_id: int) -> User | None:
+    return db.query(User).filter(User.id == user_id).first()
+
+
+def get_user_by_email(db: Session, email: str) -> User | None:
+    return db.query(User).filter(User.email == email).first()
+
+
+def create_user(db: Session, data: dict) -> User:
+    user = User(**data)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user
 
 
-def update_user(db: Session, user_id: int, update_data: dict) -> User:
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id {user_id} not found",
-        )
-    if "email" in update_data:
-        existing = db.query(User).filter(User.email == update_data["email"]).first()
-        if existing and existing.id != user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Email '{update_data['email']}' already exists",
-            )
-    for key, value in update_data.items():
-        setattr(db_user, key, value)
+def update_user(db: Session, user_id: int, data: dict) -> User | None:
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    for key, value in data.items():
+        setattr(user, key, value)
     db.commit()
-    db.refresh(db_user)
-    return db_user
+    db.refresh(user)
+    return user
 
 
-def delete_user(db: Session, user_id: int) -> None:
-    db_user = db.query(User).filter(User.id == user_id).first()
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"User with id {user_id} not found",
-        )
-    db.delete(db_user)
+def patch_user(db: Session, user_id: int, data: dict) -> User | None:
+    return update_user(db, user_id, data)
+
+
+def delete_user(db: Session, user_id: int) -> bool:
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return False
+    db.delete(user)
     db.commit()
+    return True

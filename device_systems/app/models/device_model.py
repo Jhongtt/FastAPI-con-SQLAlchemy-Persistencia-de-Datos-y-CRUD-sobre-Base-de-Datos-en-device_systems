@@ -3,14 +3,16 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 
-class User(Base):
-    __tablename__= "users"
+
+class Device(Base):
+    __tablename__ = "devices"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String(100), nullable=False)
-    email = Column(String(100), unique=True, nullable=False)
-    role =  Column(String(20), nullable=False)
-    is_active = Column(Boolean, default=True)
+    serial_number = Column(String(50), unique=True, nullable=False)
+    device_type = Column(String(30), nullable=False)
+    brand = Column(String(50), nullable=True)
+    is_available = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
 
-    loans = relationship("Loan", back_populates="user")
+    loans = relationship("Loan", back_populates="device")

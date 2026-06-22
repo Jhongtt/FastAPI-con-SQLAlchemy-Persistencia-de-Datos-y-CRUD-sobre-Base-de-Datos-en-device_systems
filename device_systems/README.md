@@ -1,175 +1,81 @@
-
 # device_systems
 
-API REST para la gestión de usuarios desarrollada con **FastAPI**, **SQLAlchemy** y **Pydantic v2**. Implementa operaciones CRUD completas con persistencia en base de datos SQLite, validaciones, constraints, manejo profesional de errores, Dependency Injection y documentación automática Swagger/OpenAPI.
+API REST con FastAPI para gestionar usuarios, dispositivos tecnologicos y prestamos.
 
-## Tecnologías utilizadas
+## Como ejecutar el proyecto
 
-- **Python 3.10+**
-- **FastAPI** — Framework web moderno y rápido
-- **Uvicorn** — Servidor ASGI
-- **SQLAlchemy** — ORM para persistencia en base de datos
-- **Pydantic v2** — Validación de datos y modelos (schemas)
-- **SQLite** — Base de datos ligera embebida
-- **Swagger UI / ReDoc** — Documentación interactiva automática
+1. pip install -r requirements.txt
+2. alembic upgrade head
+3. uvicorn app.main:app --reload
+4. Abrir http://127.0.0.1:8000/docs
 
-## Requisitos
+## Endpoints de la API
 
-- Python 3.10+
-- Editor de código (VS Code, PyCharm, etc.)
-- Cliente HTTP (Postman, Thunder Client, curl)
-- Git y GitHub
+/users
+GET /users/ - lista todos los usuarios, se puede filtrar por rol o estado
+GET /users/{id} - obtiene un usuario por ID
+POST /users/ - crea un usuario nuevo
+PUT /users/{id} - actualiza un usuario completo
+PATCH /users/{id} - actualiza solo algunos campos
+DELETE /users/{id} - elimina un usuario
+GET /users/{id}/loans - prestamos de un usuario
 
-## Instalación
+/devices
+GET /devices/ - lista dispositivos, filtros por tipo, marca, disponible o busqueda
+GET /devices/{id} - obtiene un dispositivo por ID
+POST /devices/ - crea un dispositivo
+PUT /devices/{id} - actualiza un dispositivo completo
+PATCH /devices/{id} - actualiza solo algunos campos
+DELETE /devices/{id} - elimina un dispositivo
+GET /devices/{id}/loans - historial de prestamos de un dispositivo
 
-```bash
-# Clonar el repositorio
-git clone <repo-url>
-cd device_systems
+/loans
+GET /loans/ - lista prestamos, filtros por estado, email de usuario o tipo de dispositivo
+GET /loans/details - lista prestamos con informacion del usuario y dispositivo
+GET /loans/{id} - obtiene un prestamo por ID
+POST /loans/ - crea un prestamo, valida que el dispositivo este disponible
+PATCH /loans/{id}/return - devuelve un dispositivo
 
-# Crear y activar entorno virtual
-python -m venv .venv
-.venv\Scripts\activate    # Windows
-source .venv/bin/activate  # Linux/Mac
+## Migraciones con Alembic
 
-# Instalar dependencias
-pip install -r requirements.txt
-```
+Para crear las tablas users, devices y loans se uso Alembic.
 
-## Ejecución del servidor
+Pasos:
+alembic init alembic
+alembic revision --autogenerate -m "crear tablas"
+alembic upgrade head
 
-```bash
-uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
+Para ver el historial de migraciones:
+alembic history
 
-El servidor arranca en `http://127.0.0.1:8000`. La base de datos SQLite se crea automáticamente al iniciar.
+## Tecnologias usadas
 
-## Documentación interactiva
-
-| Herramienta | URL |
-|-------------|-----|
-| Swagger UI | `http://127.0.0.1:8000/docs` |
-| ReDoc | `http://127.0.0.1:8000/redoc` |
-
-## Endpoints
-
-| Método | Ruta | Descripción | Códigos de respuesta |
-|--------|------|-------------|---------------------|
-| `GET` | `/users` | Listar todos los usuarios (con paginación, filtros y ordenamiento) | `200` |
-| `GET` | `/users/{user_id}` | Obtener un usuario por ID | `200`, `404` |
-| `POST` | `/users` | Crear un nuevo usuario | `201`, `400`, `422` |
-| `PUT` | `/users/{user_id}` | Actualizar un usuario completamente (todos los campos requeridos) | `200`, `400`, `404`, `422` |
-| `PATCH` | `/users/{user_id}` | Actualizar un usuario parcialmente (solo campos enviados) | `200`, `400`, `404`, `422` |
-| `DELETE` | `/users/{user_id}` | Eliminar un usuario | `204`, `404` |
-
-### Códigos de estado HTTP utilizados
-
-| Código | Descripción |
-|--------|-------------|
-| `200 OK` | Operación exitosa (GET, PUT, PATCH) |
-| `201 Created` | Recurso creado exitosamente (POST) |
-| `204 No Content` | Recurso eliminado sin cuerpo de respuesta (DELETE) |
-| `400 Bad Request` | Error del cliente (correo duplicado, rol inválido, PATCH sin datos) |
-| `404 Not Found` | Recurso no encontrado |
-| `422 Unprocessable Entity` | Error de validación de datos (Pydantic) |
-
-### Parámetros de consulta (`GET /users`)
-
-| Parámetro | Tipo | Descripción |
-|-----------|------|-------------|
-| `skip` | `int` | Número de registros a saltar (defecto: 0) |
-| `limit` | `int` | Máximo de registros a retornar (defecto: 10, máx: 100) |
-| `role` | `str` | Filtrar por rol (`admin`, `support`, `user`) |
-| `is_active` | `bool` | Filtrar por estado activo/inactivo |
-| `sort_by` | `str` | Ordenar por campo (`name`, `created_at`) |
-| `sort_order` | `str` | Dirección del orden (`asc`, `desc`) |
+Python, FastAPI, SQLAlchemy, Alembic, Pydantic, SQLite, Uvicorn.
 
 ## Estructura del proyecto
 
-```
-device_systems/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                            # Punto de entrada, configuración y creación de tablas
-│   ├── database/
-│   │   ├── __init__.py
-│   │   └── connection.py                  # Engine, SessionLocal, Base declarativa
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── user_model.py                  # Modelo SQLAlchemy User
-│   ├── schemas/
-│   │   ├── __init__.py
-│   │   ├── user_schema.py                 # Schemas Pydantic (UserCreate, UserUpdate, UserUpdateFull, UserResponse)
-│   │   └── response_schema.py             # Modelo de respuesta estandarizado
-│   ├── services/
-│   │   ├── __init__.py
-│   │   └── user_service.py               # Lógica de negocio CRUD con SQLAlchemy
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   └── user_routes.py                # Definición de endpoints con inyección de DB
-│   └── dependencies/
-│       ├── __init__.py
-│       ├── database_dependency.py         # Dependencia get_db() para sesiones de BD
-│       └── user_dependencies.py           # Validaciones (rol, config)
-├── requirements.txt
-└── README.md
-```
+app/main.py - inicio de la API
+app/database/connection.py - conexion a SQLite
+app/models/ - modelos User, Device y Loan
+app/schemas/ - validacion de datos con Pydantic
+app/services/ - logica de negocio
+app/routes/ - rutas de la API
+alembic/ - migraciones de base de datos
+requirements.txt - dependencias del proyecto
 
-## Cambios respecto a la versión anterior
+## Codigos de estado HTTP
 
-| Aspecto | Versión anterior (v2) | Versión actual (v3) |
-|---------|----------------------|---------------------|
-| Almacenamiento | En memoria (lista de diccionarios) | Base de datos SQLite con SQLAlchemy |
-| Modelo de datos | Diccionarios Python | Modelo SQLAlchemy `User` con tipos y constraints |
-| Operaciones CRUD | Manipulación directa de listas | Consultas ORM con sesión de base de datos |
-| Dependencia de BD | No existía | `get_db()` inyectada con `Depends()` |
-| Ordenamiento | No soportado | Por nombre o fecha de creación |
-| Archivo `data/` | `app/data/users_db.py` | Eliminado (reemplazado por BD) |
+200 - consulta exitosa
+201 - registro creado
+204 - eliminacion exitosa
+400 - dato duplicado o filtro invalido
+404 - recurso no encontrado
+409 - regla de negocio incumplida (dispositivo no disponible, prestamo ya devuelto)
+422 - error de validacion
 
-## Diferencia entre modelo SQLAlchemy y schema Pydantic
+## Notas
 
-- **Modelo SQLAlchemy** (`app/models/user_model.py`): Define la estructura de la tabla en la base de datos. Incluye tipos de datos SQL (`Column(Integer)`, `Column(String)`), restricciones (`nullable=False`, `unique=True`, `primary_key=True`) y valores por defecto. Representa cómo se almacenan y relacionan los datos a nivel de base de datos.
+Los nombres de las tablas estan en ingles porque SQLAlchemy funciona asi pero las descripciones y mensajes de la API estan en español.
+La base de datos es SQLite y se guarda en el archivo device_systems.db.
 
-- **Schema Pydantic** (`app/schemas/user_schema.py`): Define la estructura de los datos que entran y salen de la API. Incluye validaciones de dominio (`min_length=3`, formato de email, roles permitidos), documentación para Swagger y serialización/deserialización JSON. Controla qué datos expone la API al cliente.
 
-Ambos son complementarios: el modelo SQLAlchemy se encarga de la persistencia, mientras que el schema Pydantic se encarga de la validación y presentación de datos.
-
-## Dependency Injection con Depends()
-
-Se aplicó **Dependency Injection** para inyectar la sesión de base de datos y validaciones en los endpoints usando `Depends()`.
-
-### Dependencias implementadas
-
-| Función | Descripción |
-|---------|-------------|
-| `get_db()` | Entrega una sesión de SQLAlchemy y la cierra automáticamente al finalizar |
-| `validate_role_allowed(role)` | Valida que el rol sea uno de los permitidos (`admin`, `support`, `user`) |
-| `get_api_config()` | Retorna configuración general de la API |
-
-## Manejo de errores implementado
-
-La API utiliza `HTTPException` de FastAPI para manejar errores de forma profesional:
-
-- **Usuario no encontrado** — `HTTPException(404)` en `user_service.get_user()` y `user_service.delete_user()`
-- **Correo duplicado** — `HTTPException(400)` en `user_service.create_user()` y `user_service.update_user()`
-- **Rol no permitido** — `HTTPException(400)` en `validate_role_allowed()`
-- **PATCH sin datos** — `HTTPException(400)` verificado directamente en la ruta
-- **Datos inválidos** — Validación automática de Pydantic devuelve `422 Unprocessable Entity`
-
-## Cabeceras HTTP personalizadas
-
-Todas las respuestas incluyen:
-
-- `X-App-Name: device_systems`
-- `X-API-Version: 3.0`
-
-## Reflexión final
-
-La incorporación de **SQLAlchemy** y persistencia en base de datos transformó `device_systems` de una API con datos volátiles en memoria a una aplicación robusta con almacenamiento permanente. Las principales ventajas de usar un ORM y base de datos relacional en una API REST son:
-
-1. **Persistencia real**: Los datos sobreviven a reinicios del servidor.
-2. **Integridad referencial**: Constraints como `unique=True` y `nullable=False` garantizan calidad de datos.
-3. **Consultas optimizadas**: El ORM permite filtrado, ordenamiento y paginación eficientes.
-4. **Separación de responsabilidades**: Modelos SQLAlchemy para BD, schemas Pydantic para API.
-5. **Escalabilidad**: La misma lógica puede migrarse a PostgreSQL, MySQL u otros motores cambiando solo la URL de conexión.
-6. **Transacciones**: Las operaciones CRUD se ejecutan dentro de sesiones con commit/rollback.

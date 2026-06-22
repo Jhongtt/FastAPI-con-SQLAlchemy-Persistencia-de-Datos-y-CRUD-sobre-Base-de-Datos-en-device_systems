@@ -1,95 +1,35 @@
-from datetime import datetime
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
-
-class UserBase(BaseModel):
-    name: str = Field(..., min_length=3, max_length=100)
-    email: str = Field(..., max_length=100)
-    role: str = Field(default="user", max_length=20)
-    is_active: bool = Field(default=True)
-
-    @field_validator("email")
-    @classmethod
-    def validate_email(cls, v: str) -> str:
-        if "@" not in v or "." not in v.split("@")[-1]:
-            raise ValueError("Invalid email format")
-        return v.lower().strip()
-
-    @field_validator("role")
-    @classmethod
-    def validate_role(cls, v: str) -> str:
-        allowed = {"admin", "support", "user"}
-        if v.lower() not in allowed:
-            raise ValueError(f"Role must be one of: {', '.join(sorted(allowed))}")
-        return v.lower()
+ROLES_PERMITIDOS = ["admin", "support", "user"]
 
 
-class UserCreate(UserBase):
-    password: str = Field(..., min_length=8, max_length=128)
-
-    @field_validator("password")
-    @classmethod
-    def validate_password(cls, v: str) -> str:
-        if not any(c.isupper() for c in v):
-            raise ValueError("Password must contain at least one uppercase letter")
-        if not any(c.islower() for c in v):
-            raise ValueError("Password must contain at least one lowercase letter")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one digit")
-        return v
+class UserCreate(BaseModel):
+    name: str = Field(..., min_length=3)
+    email: EmailStr
+    role: str = Field(..., description="Roles validos: admin, support, user")
+    is_active: bool = True
 
 
 class UserUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=3, max_length=100)
-    email: Optional[str] = Field(None, max_length=100)
-    role: Optional[str] = Field(None, max_length=20)
+    name: str = Field(..., min_length=3)
+    email: EmailStr
+    role: str
+    is_active: bool
+
+
+class UserPatch(BaseModel):
+    name: Optional[str] = Field(None, min_length=3)
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
     is_active: Optional[bool] = None
 
-    @field_validator("email")
-    @classmethod
-    def validate_email(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            if "@" not in v or "." not in v.split("@")[-1]:
-                raise ValueError("Invalid email format")
-            return v.lower().strip()
-        return v
 
-    @field_validator("role")
-    @classmethod
-    def validate_role(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None:
-            allowed = {"admin", "support", "user"}
-            if v.lower() not in allowed:
-                raise ValueError(f"Role must be one of: {', '.join(sorted(allowed))}")
-            return v.lower()
-        return v
-
-
-class UserUpdateFull(BaseModel):
-    name: str = Field(..., min_length=3, max_length=100)
-    email: str = Field(..., max_length=100)
-    role: str = Field(..., max_length=20)
-    is_active: bool = Field(...)
-
-    @field_validator("email")
-    @classmethod
-    def validate_email(cls, v: str) -> str:
-        if "@" not in v or "." not in v.split("@")[-1]:
-            raise ValueError("Invalid email format")
-        return v.lower().strip()
-
-    @field_validator("role")
-    @classmethod
-    def validate_role(cls, v: str) -> str:
-        allowed = {"admin", "support", "user"}
-        if v.lower() not in allowed:
-            raise ValueError(f"Role must be one of: {', '.join(sorted(allowed))}")
-        return v.lower()
-
-
-class UserResponse(UserBase):
+class UserResponse(BaseModel):
     id: int
-    created_at: datetime
+    name: str
+    email: str
+    role: str
+    is_active: bool
 
     model_config = {"from_attributes": True}

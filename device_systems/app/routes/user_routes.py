@@ -4,6 +4,8 @@ from app.schemas.user_schema import UserCreate, UserUpdate, UserPatch, UserRespo
 from app.schemas.loan_schema import LoanDetailResponse
 from app.services import user_service, loan_service
 from app.dependencies.database_dependency import get_db
+from app.dependencies.auth_dependency import get_current_active_user, require_admin_or_support
+from app.models.user_model import User
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -14,10 +16,15 @@ ROLES_VALIDOS = ["admin", "support", "user"]
     "/",
     response_model=list[UserResponse],
     summary="Listar usuarios",
-    description="Retorna todos los usuarios. Filtros opcionales por rol o estado activo.",
-    response_description="Lista de usuarios",
+    description="Retorna todos los usuarios. Requiere autenticacion.",
+    responses={401: {"description": "No autenticado"}},
 )
-def list_users(role: str = None, is_active: bool = None, db: Session = Depends(get_db)):
+def list_users(
+    role: str = None,
+    is_active: bool = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     return user_service.get_all_users(db, role=role, is_active=is_active)
 
 
@@ -25,10 +32,14 @@ def list_users(role: str = None, is_active: bool = None, db: Session = Depends(g
     "/{user_id}",
     response_model=UserResponse,
     summary="Obtener usuario por ID",
-    description="Retorna un usuario especifico por su ID.",
-    response_description="Datos del usuario",
+    description="Retorna un usuario especifico por su ID. Requiere autenticacion.",
+    responses={401: {"description": "No autenticado"}, 404: {"description": "Usuario no encontrado"}},
 )
-def get_one_user(user_id: int, db: Session = Depends(get_db)):
+def get_one_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     user = user_service.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -40,14 +51,16 @@ def get_one_user(user_id: int, db: Session = Depends(get_db)):
     response_model=UserResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Crear usuario",
-    description="Registra un nuevo usuario. El email debe ser unico. Roles: admin, support, user.",
-    response_description="Usuario creado",
+    description="Registra un nuevo usuario via admin/support. El email debe ser unico.",
+    responses={400: {"description": "Email duplicado o datos invalidos"}, 401: {"description": "No autenticado"}},
 )
-def create(data: UserCreate, db: Session = Depends(get_db)):
+def create(
+    data: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support),
+):
     if data.role not in ROLES_VALIDOS:
-        raise HTTPException(
-            status_code=400, detail=f"Rol no valido. Opciones: {ROLES_VALIDOS}"
-        )
+        raise HTTPException(status_code=400, detail=f"Rol no valido. Opciones: {ROLES_VALIDOS}")
     existente = user_service.get_user_by_email(db, data.email)
     if existente:
         raise HTTPException(status_code=400, detail="El email ya esta registrado")
@@ -59,16 +72,19 @@ def create(data: UserCreate, db: Session = Depends(get_db)):
     response_model=UserResponse,
     summary="Actualizar usuario completo",
     description="Reemplaza toda la informacion de un usuario.",
-    response_description="Usuario actualizado",
+    responses={401: {"description": "No autenticado"}, 404: {"description": "Usuario no encontrado"}},
 )
-def update(user_id: int, data: UserUpdate, db: Session = Depends(get_db)):
+def update(
+    user_id: int,
+    data: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support),
+):
     user = user_service.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     if data.role not in ROLES_VALIDOS:
-        raise HTTPException(
-            status_code=400, detail=f"Rol no valido. Opciones: {ROLES_VALIDOS}"
-        )
+        raise HTTPException(status_code=400, detail=f"Rol no valido. Opciones: {ROLES_VALIDOS}")
     if data.email != user.email:
         existente = user_service.get_user_by_email(db, data.email)
         if existente:
@@ -84,9 +100,14 @@ def update(user_id: int, data: UserUpdate, db: Session = Depends(get_db)):
     response_model=UserResponse,
     summary="Actualizar usuario parcialmente",
     description="Modifica solo los campos enviados en el cuerpo.",
-    response_description="Usuario actualizado parcialmente",
+    responses={401: {"description": "No autenticado"}, 404: {"description": "Usuario no encontrado"}},
 )
-def patch(user_id: int, data: UserPatch, db: Session = Depends(get_db)):
+def patch(
+    user_id: int,
+    data: UserPatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support),
+):
     user = user_service.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -94,9 +115,7 @@ def patch(user_id: int, data: UserPatch, db: Session = Depends(get_db)):
     if not campos:
         raise HTTPException(status_code=400, detail="No se enviaron datos para actualizar")
     if "role" in campos and campos["role"] not in ROLES_VALIDOS:
-        raise HTTPException(
-            status_code=400, detail=f"Rol no valido. Opciones: {ROLES_VALIDOS}"
-        )
+        raise HTTPException(status_code=400, detail=f"Rol no valido. Opciones: {ROLES_VALIDOS}")
     if "email" in campos and campos["email"] != user.email:
         existente = user_service.get_user_by_email(db, campos["email"])
         if existente:
@@ -111,9 +130,14 @@ def patch(user_id: int, data: UserPatch, db: Session = Depends(get_db)):
     "/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Eliminar usuario",
-    description="Elimina un usuario existente por su ID.",
+    description="Elimina un usuario existente por su ID. Solo admin.",
+    responses={401: {"description": "No autenticado"}, 403: {"description": "No autorizado"}, 404: {"description": "Usuario no encontrado"}},
 )
-def delete(user_id: int, db: Session = Depends(get_db)):
+def delete(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support),
+):
     deleted = user_service.delete_user(db, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
@@ -124,9 +148,13 @@ def delete(user_id: int, db: Session = Depends(get_db)):
     response_model=list[LoanDetailResponse],
     summary="Prestamos de un usuario",
     description="Retorna todos los prestamos asociados a un usuario especifico.",
-    response_description="Lista de prestamos del usuario",
+    responses={401: {"description": "No autenticado"}, 404: {"description": "Usuario no encontrado"}},
 )
-def get_user_loans(user_id: int, db: Session = Depends(get_db)):
+def get_user_loans(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     user = user_service.get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")

@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 from app.schemas.loan_schema import LoanCreate, LoanUpdate, LoanResponse, LoanDetailResponse
 from app.services import loan_service
 from app.dependencies.database_dependency import get_db
+from app.dependencies.auth_dependency import get_current_active_user, require_admin_or_support
+from app.models.user_model import User
 
 router = APIRouter(prefix="/loans", tags=["Loans"])
 
@@ -11,14 +13,15 @@ router = APIRouter(prefix="/loans", tags=["Loans"])
     "/",
     response_model=list[LoanResponse],
     summary="Listar prestamos",
-    description="Lista todos los prestamos con filtros opcionales por estado, email de usuario o tipo de dispositivo.",
-    response_description="Lista de prestamos",
+    description="Lista todos los prestamos con filtros opcionales.",
+    responses={401: {"description": "No autenticado"}},
 )
 def list_loans(
     status: str = Query(None, description="Filtrar por estado: active, returned, overdue"),
     user_email: str = Query(None, description="Filtrar por email del usuario"),
     device_type: str = Query(None, description="Filtrar por tipo de dispositivo"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
 ):
     return loan_service.get_all_loans(db, status=status, user_email=user_email, device_type=device_type)
 
@@ -27,14 +30,15 @@ def list_loans(
     "/details",
     response_model=list[LoanDetailResponse],
     summary="Listar prestamos con detalles",
-    description="Retorna prestamos con informacion completa del usuario y dispositivo. Incluye filtros.",
-    response_description="Prestamos con detalles de usuario y dispositivo",
+    description="Retorna prestamos con informacion completa. Requiere admin o support.",
+    responses={401: {"description": "No autenticado"}, 403: {"description": "No autorizado"}},
 )
 def list_loan_details(
     status: str = Query(None, description="Filtrar por estado"),
     user_email: str = Query(None, description="Filtrar por email del usuario"),
     device_type: str = Query(None, description="Filtrar por tipo de dispositivo"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support),
 ):
     return loan_service.get_loans_with_details(db, status=status, user_email=user_email, device_type=device_type)
 
@@ -44,9 +48,13 @@ def list_loan_details(
     response_model=LoanDetailResponse,
     summary="Obtener prestamo por ID",
     description="Retorna un prestamo especifico con datos del usuario y dispositivo.",
-    response_description="Detalle del prestamo",
+    responses={401: {"description": "No autenticado"}, 404: {"description": "Prestamo no encontrado"}},
 )
-def get_one_loan(loan_id: int, db: Session = Depends(get_db)):
+def get_one_loan(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     loan = loan_service.get_loan_by_id(db, loan_id)
     if not loan:
         raise HTTPException(status_code=404, detail="Prestamo no encontrado")
@@ -58,10 +66,14 @@ def get_one_loan(loan_id: int, db: Session = Depends(get_db)):
     response_model=LoanDetailResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Crear prestamo",
-    description="Crea un nuevo prestamo. Valida que el usuario y dispositivo existan y que el dispositivo este disponible.",
-    response_description="Prestamo creado",
+    description="Crea un nuevo prestamo. Requiere autenticacion.",
+    responses={401: {"description": "No autenticado"}, 404: {"description": "Usuario o dispositivo no encontrado"}, 409: {"description": "Dispositivo no disponible"}},
 )
-def create(data: LoanCreate, db: Session = Depends(get_db)):
+def create(
+    data: LoanCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
     try:
         loan = loan_service.create_loan(db, data.model_dump())
         return loan
@@ -77,10 +89,14 @@ def create(data: LoanCreate, db: Session = Depends(get_db)):
     "/{loan_id}/return",
     response_model=LoanDetailResponse,
     summary="Devolver dispositivo",
-    description="Marca un prestamo como devuelto. Actualiza la fecha de devolucion y marca el dispositivo como disponible.",
-    response_description="Prestamo actualizado",
+    description="Marca un prestamo como devuelto. Requiere admin o support.",
+    responses={401: {"description": "No autenticado"}, 403: {"description": "No autorizado"}, 404: {"description": "Prestamo no encontrado"}},
 )
-def return_device(loan_id: int, db: Session = Depends(get_db)):
+def return_device(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support),
+):
     try:
         loan = loan_service.return_loan(db, loan_id)
         return loan

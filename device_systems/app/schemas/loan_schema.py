@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional
 from datetime import datetime
+
+ESTADOS_VALIDOS = {"active", "returned", "overdue"}
 
 
 class UserBasic(BaseModel):
@@ -8,7 +10,7 @@ class UserBasic(BaseModel):
     name: str
     email: str
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DeviceBasic(BaseModel):
@@ -17,16 +19,23 @@ class DeviceBasic(BaseModel):
     serial_number: str
     device_type: str
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LoanCreate(BaseModel):
-    user_id: int = Field(..., description="ID del usuario que solicita el prestamo")
-    device_id: int = Field(..., description="ID del dispositivo a prestar")
+    user_id: int = Field(..., gt=0, description="ID del usuario que solicita el prestamo")
+    device_id: int = Field(..., gt=0, description="ID del dispositivo a prestar")
 
 
 class LoanUpdate(BaseModel):
     status: str = Field(..., description="Estado: active, returned, overdue")
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        if v not in ESTADOS_VALIDOS:
+            raise ValueError(f"Estado invalido. Opciones: {sorted(ESTADOS_VALIDOS)}")
+        return v
 
 
 class LoanResponse(BaseModel):
@@ -37,7 +46,7 @@ class LoanResponse(BaseModel):
     return_date: Optional[datetime] = None
     status: str
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LoanDetailResponse(BaseModel):
@@ -48,4 +57,4 @@ class LoanDetailResponse(BaseModel):
     user: UserBasic
     device: DeviceBasic
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True)
